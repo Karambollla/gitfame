@@ -111,7 +111,7 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 		}
 
 		out := make([]string, 0, len(exts))
-		//lint:ignore S1011 false positive: elements are transformed
+		//nolint:staticcheck
 		for _, e := range exts {
 			e = strings.TrimSpace(e)
 			if e == "" {
