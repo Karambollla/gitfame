@@ -122,6 +122,7 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 			}
 			out = append(out, strings.ToLower(e))
 		}
+		// nolint:staticcheck
 		norm[key] = out
 	}
 
