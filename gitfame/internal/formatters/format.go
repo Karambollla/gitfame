@@ -111,6 +111,7 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 		}
 
 		out := make([]string, 0, len(exts))
+		//nolint:staticcheck
 		for _, e := range exts {
 			e = strings.TrimSpace(e)
 			if e == "" {
