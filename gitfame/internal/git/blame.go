@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
@@ -14,6 +15,15 @@ import (
 )
 
 type BlameLine = models.BlameLine
+
+type authorInfo struct {
+	commits map[string]struct{}
+	lines   int
+}
+type totalAuthorInfo struct {
+	commits, files map[string]struct{}
+	lines          int
+}
 
 func CollectFiles(repositoryPath string, languages []string, extensions []string, exclude []string, restrictTo []string, revision string, languageMap *map[string][]string) ([]string, error) {
 	extSet := make(map[string]struct{})
@@ -114,105 +124,139 @@ func CollectFiles(repositoryPath string, languages []string, extensions []string
 	return files, nil
 }
 
-// dfs по файлам
 func CollectBlame(repositoryPath string, revision string, files []string, commiter bool) ([]BlameLine, error) {
-	res := make([]BlameLine, 0)
+	total := make(map[string]*totalAuthorInfo)
 	for _, filePath := range files {
-		file, err := Blame(repositoryPath, revision, filePath, commiter)
+		fileInfo, err := collectFileBlame(repositoryPath, revision, filePath, commiter)
 		if err != nil {
 			return nil, err
 		}
-		res = append(res, file...)
+		for author, info := range fileInfo {
+			a := total[author]
+			if a == nil {
+				a = &totalAuthorInfo{commits: map[string]struct{}{}, files: map[string]struct{}{}}
+				total[author] = a
+			}
+			a.lines += info.lines
+			for commit := range info.commits {
+				a.commits[commit] = struct{}{}
+			}
+			a.files[filePath] = struct{}{}
+		}
+	}
+	res := make([]BlameLine, 0, len(total))
+	for author, info := range total {
+		res = append(res, BlameLine{Name: author, Lines: info.lines, Commits: len(info.commits), Files: len(info.files)})
 	}
 	return res, nil
 }
 
-// для 1 файла
 func Blame(repositoryPath string, revision string, filePath string, commiter bool) ([]BlameLine, error) {
+	fileInfo, err := collectFileBlame(repositoryPath, revision, filePath, commiter)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]BlameLine, 0, len(fileInfo))
+	for author, info := range fileInfo {
+		result = append(result, BlameLine{Name: author, Lines: info.lines, Commits: len(info.commits), Files: 1})
+	}
+	return result, nil
+}
+
+func collectFileBlame(repositoryPath string, revision string, filePath string, commiter bool) (map[string]*authorInfo, error) {
 	out, err := exec.Command("git", "-C", repositoryPath, "blame", "--porcelain", revision, "--", filePath).Output()
 	if err != nil {
 		return nil, err
 	}
 	scanner := bufio.NewScanner(bytes.NewReader(out))
-	type authorInfo struct {
-		commits map[string]struct{}
-		lines   int
-	}
 	info := make(map[string]*authorInfo)
-
-	var currentCommit string
+	seenAuthors := make(map[string]string)
 	var currentAuthor string
-	var prevline string
-
+	var currentCommit string
 	for scanner.Scan() {
 		line := scanner.Text()
-		if currentCommit == "" && currentAuthor == "" {
-			parts := strings.Fields(line)
-			if len(parts) > 0 {
-				currentCommit = parts[0]
-			}
-			prevline = line
+		if commit, ok := parseBlameHeader(line); ok {
+			currentCommit = commit
+			currentAuthor = seenAuthors[commit]
 			continue
 		}
-
-		if strings.HasPrefix(line, "author ") {
+		if !commiter && strings.HasPrefix(line, "author ") {
 			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "author "))
-			parts := strings.Fields(prevline)
-			if len(parts) > 0 {
-				currentCommit = parts[0]
+			if currentCommit != "" && currentAuthor != "" {
+				seenAuthors[currentCommit] = currentAuthor
 			}
-			if !commiter {
-				if _, exists := info[currentAuthor]; !exists {
-					info[currentAuthor] = &authorInfo{commits: make(map[string]struct{})}
-				}
-				info[currentAuthor].commits[currentCommit] = struct{}{}
-			}
-			prevline = line
 			continue
 		}
-
 		if commiter && strings.HasPrefix(line, "committer ") {
 			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "committer "))
-			parts := strings.Fields(prevline)
-			if len(parts) > 0 {
-				currentCommit = parts[0]
+			if currentCommit != "" && currentAuthor != "" {
+				seenAuthors[currentCommit] = currentAuthor
 			}
-			if _, exists := info[currentAuthor]; !exists {
-				info[currentAuthor] = &authorInfo{commits: make(map[string]struct{})}
-			}
-			info[currentAuthor].commits[currentCommit] = struct{}{}
-			prevline = line
 			continue
 		}
-
-		if strings.HasPrefix(line, "\t") {
-			if currentAuthor == "" {
-				prevline = line
-				continue
-			}
-			if _, exists := info[currentAuthor]; !exists {
-				info[currentAuthor] = &authorInfo{commits: make(map[string]struct{})}
-			}
-			info[currentAuthor].lines++
-			prevline = line
+		if !strings.HasPrefix(line, "\t") || currentAuthor == "" || currentCommit == "" {
+			continue
 		}
+		a := info[currentAuthor]
+		if a == nil {
+			a = &authorInfo{commits: map[string]struct{}{}}
+			info[currentAuthor] = a
+		}
+		a.lines++
+		a.commits[currentCommit] = struct{}{}
 	}
-
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
-
-	var result []BlameLine
-	for author, a := range info {
-		result = append(result, BlameLine{
-			Name:    author,
-			Lines:   a.lines,
-			Commits: len(a.commits),
-			Files:   1,
-		})
+	if len(info) > 0 {
+		return info, nil
 	}
+	author, commit, err := lastChangeForFile(repositoryPath, revision, filePath, commiter)
+	if err != nil {
+		return nil, err
+	}
+	if author != "" && commit != "" {
+		info[author] = &authorInfo{commits: map[string]struct{}{commit: {}}}
+	}
+	return info, nil
+}
 
-	return result, nil
+func parseBlameHeader(line string) (string, bool) {
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return "", false
+	}
+	hash := strings.TrimPrefix(fields[0], "^")
+	if len(hash) < 7 {
+		return "", false
+	}
+	if _, err := strconv.Atoi(fields[1]); err != nil {
+		return "", false
+	}
+	if _, err := strconv.Atoi(fields[2]); err != nil {
+		return "", false
+	}
+	return hash, true
+}
+
+func lastChangeForFile(repositoryPath string, revision string, filePath string, commiter bool) (string, string, error) {
+	person := "%an"
+	if commiter {
+		person = "%cn"
+	}
+	out, err := exec.Command("git", "-C", repositoryPath, "log", "-1", "--format=%H%x00"+person, revision, "--", filePath).Output()
+	if err != nil {
+		return "", "", err
+	}
+	logLine := strings.TrimSpace(string(out))
+	if logLine == "" {
+		return "", "", nil
+	}
+	parts := strings.SplitN(logLine, "\x00", 2)
+	if len(parts) != 2 {
+		return "", "", nil
+	}
+	return parts[1], parts[0], nil
 }
 
 func normalizeExt(s string) string {
