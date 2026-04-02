@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -42,7 +41,6 @@ var rootCmd = &cobra.Command{
 			RestrictTo:   formatters.SplitCSV(restrictTo),
 			ShowProgress: showProgress,
 		}
-		fmt.Println("dddd")
 		if err := gitfame.Validate(&opts); err != nil {
 			slog.Error("failed validating options", "error", err)
 			os.Exit(2)

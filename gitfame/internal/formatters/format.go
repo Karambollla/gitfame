@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -92,17 +93,84 @@ func Format(blame []BlameLine, format string) string {
 }
 
 func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
-	cfgPath := filepath.Join(repositoryPath, "configs", "language_extensions.json")
+	cfgPath, err := resolveLanguageConfigPath(repositoryPath)
+	if err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
 		return nil, err
 	}
 
-	var langMap map[string][]string
-	if err := json.Unmarshal(data, &langMap); err != nil {
+	var objectMap map[string][]string
+	if err := json.Unmarshal(data, &objectMap); err == nil {
+		norm := normalizeLanguageMap(objectMap)
+		return &norm, nil
+	}
+
+	type languageConfigEntry struct {
+		Name       string   `json:"name"`
+		Extensions []string `json:"extensions"`
+	}
+
+	var entries []languageConfigEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
 		return nil, err
 	}
 
+	raw := make(map[string][]string, len(entries))
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Name) == "" || len(entry.Extensions) == 0 {
+			continue
+		}
+		raw[entry.Name] = append(raw[entry.Name], entry.Extensions...)
+	}
+
+	norm := normalizeLanguageMap(raw)
+	return &norm, nil
+}
+
+func resolveLanguageConfigPath(repositoryPath string) (string, error) {
+	if strings.TrimSpace(repositoryPath) != "" {
+		candidate := filepath.Join(repositoryPath, "configs", "language_extensions.json")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	if wd, err := os.Getwd(); err == nil {
+		if candidate, ok := findConfigPathUpward(wd); ok {
+			return candidate, nil
+		}
+	}
+
+	if exe, err := os.Executable(); err == nil {
+		if candidate, ok := findConfigPathUpward(filepath.Dir(exe)); ok {
+			return candidate, nil
+		}
+	}
+
+	return "", errors.New("language configuration not found")
+}
+
+func findConfigPathUpward(startDir string) (string, bool) {
+	dir := filepath.Clean(startDir)
+	for {
+		candidate := filepath.Join(dir, "configs", "language_extensions.json")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, true
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+func normalizeLanguageMap(langMap map[string][]string) map[string][]string {
 	norm := make(map[string][]string, len(langMap))
 	for lang, exts := range langMap {
 		key := strings.ToLower(strings.TrimSpace(lang))
@@ -111,7 +179,6 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 		}
 
 		out := make([]string, 0, len(exts))
-		//nolint:staticcheck
 		for _, e := range exts {
 			e = strings.TrimSpace(e)
 			if e == "" {
@@ -125,7 +192,7 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 		norm[key] = out
 	}
 
-	return &norm, nil
+	return norm
 }
 
 func ExtensionsForLanguage(language string, languageMap *map[string][]string) []string {
@@ -144,9 +211,7 @@ func ExtensionsForLanguage(language string, languageMap *map[string][]string) []
 	}
 
 	out := make([]string, 0, len(exts))
-	for _, e := range exts {
-		out = append(out, e)
-	}
+	out = append(out, exts...)
 
 	return out
 }
@@ -203,6 +268,9 @@ func OrderByLines(blame []BlameLine, sortby string) ([]BlameLine, error) {
 			if out[i].Commits != out[j].Commits {
 				return out[i].Commits > out[j].Commits
 			}
+			if out[i].Files != out[j].Files {
+				return out[i].Files > out[j].Files
+			}
 			return out[i].Name < out[j].Name
 		})
 	case "commits":
@@ -212,6 +280,9 @@ func OrderByLines(blame []BlameLine, sortby string) ([]BlameLine, error) {
 			}
 			if out[i].Lines != out[j].Lines {
 				return out[i].Lines > out[j].Lines
+			}
+			if out[i].Files != out[j].Files {
+				return out[i].Files > out[j].Files
 			}
 			return out[i].Name < out[j].Name
 		})
@@ -223,10 +294,13 @@ func OrderByLines(blame []BlameLine, sortby string) ([]BlameLine, error) {
 			if out[i].Lines != out[j].Lines {
 				return out[i].Lines > out[j].Lines
 			}
+			if out[i].Commits != out[j].Commits {
+				return out[i].Commits > out[j].Commits
+			}
 			return out[i].Name < out[j].Name
 		})
 	default:
-		return nil, fmt.Errorf("invalid sort key: %s", sortby)
+		return nil, errors.New("invalid sort key")
 	}
 
 	return out, nil
