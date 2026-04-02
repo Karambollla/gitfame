@@ -3,14 +3,10 @@ package git
 import (
 	"bufio"
 	"bytes"
-	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
-	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
 	"gitlab.com/slon/shad-go/gitfame/internal/models"
 )
 
@@ -26,29 +22,7 @@ type totalAuthorInfo struct {
 }
 
 func CollectFiles(repositoryPath string, languages []string, extensions []string, exclude []string, restrictTo []string, revision string, languageMap *map[string][]string) ([]string, error) {
-	extSet := make(map[string]struct{})
-	for _, ext := range extensions {
-		norm := normalizeExt(ext)
-		if norm != "" {
-			extSet[norm] = struct{}{}
-		}
-	}
-
-	for _, lang := range languages {
-		langExts := formatters.ExtensionsForLanguage(lang, languageMap)
-		if len(langExts) == 0 {
-			if strings.TrimSpace(lang) != "" {
-				fmt.Fprintln(os.Stderr, "warning: unknown language:", lang)
-			}
-			continue
-		}
-		for _, ext := range langExts {
-			norm := normalizeExt(ext)
-			if norm != "" {
-				extSet[norm] = struct{}{}
-			}
-		}
-	}
+	extSet := buildExtSet(extensions, languages, languageMap)
 
 	out, err := exec.Command("git", "-C", repositoryPath, "ls-tree", "-r", revision).Output()
 	if err != nil {
@@ -74,44 +48,7 @@ func CollectFiles(repositoryPath string, languages []string, extensions []string
 			continue
 		}
 
-		if len(extSet) > 0 {
-			ext := strings.ToLower(filepath.Ext(filePath))
-			if _, ok := extSet[ext]; !ok {
-				continue
-			}
-		}
-
-		if len(restrictTo) > 0 {
-			matched := false
-			for _, pattern := range restrictTo {
-				pattern = strings.TrimSpace(pattern)
-				if pattern == "" {
-					continue
-				}
-				ok, _ := filepath.Match(pattern, filePath)
-				if ok {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-
-		excluded := false
-		for _, pattern := range exclude {
-			pattern = strings.TrimSpace(pattern)
-			if pattern == "" {
-				continue
-			}
-			ok, _ := filepath.Match(pattern, filePath)
-			if ok {
-				excluded = true
-				break
-			}
-		}
-		if excluded {
+		if !fileMatchesFilters(filePath, extSet, exclude, restrictTo) {
 			continue
 		}
 
@@ -168,44 +105,9 @@ func collectFileBlame(repositoryPath string, revision string, filePath string, c
 	if err != nil {
 		return nil, err
 	}
-	scanner := bufio.NewScanner(bytes.NewReader(out))
-	info := make(map[string]*authorInfo)
-	seenAuthors := make(map[string]string)
-	var currentAuthor string
-	var currentCommit string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if commit, ok := parseBlameHeader(line); ok {
-			currentCommit = commit
-			currentAuthor = seenAuthors[commit]
-			continue
-		}
-		if !commiter && strings.HasPrefix(line, "author ") {
-			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "author "))
-			if currentCommit != "" && currentAuthor != "" {
-				seenAuthors[currentCommit] = currentAuthor
-			}
-			continue
-		}
-		if commiter && strings.HasPrefix(line, "committer ") {
-			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "committer "))
-			if currentCommit != "" && currentAuthor != "" {
-				seenAuthors[currentCommit] = currentAuthor
-			}
-			continue
-		}
-		if !strings.HasPrefix(line, "\t") || currentAuthor == "" || currentCommit == "" {
-			continue
-		}
-		a := info[currentAuthor]
-		if a == nil {
-			a = &authorInfo{commits: map[string]struct{}{}}
-			info[currentAuthor] = a
-		}
-		a.lines++
-		a.commits[currentCommit] = struct{}{}
-	}
-	if err := scanner.Err(); err != nil {
+
+	info, err := parseBlameOutput(out, commiter)
+	if err != nil {
 		return nil, err
 	}
 	if len(info) > 0 {
@@ -259,13 +161,46 @@ func lastChangeForFile(repositoryPath string, revision string, filePath string, 
 	return parts[1], parts[0], nil
 }
 
-func normalizeExt(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+func parseBlameOutput(out []byte, commiter bool) (map[string]*authorInfo, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(out))
+	info := make(map[string]*authorInfo)
+	seenAuthors := make(map[string]string)
+	var currentAuthor string
+	var currentCommit string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if commit, ok := parseBlameHeader(line); ok {
+			currentCommit = commit
+			currentAuthor = seenAuthors[commit]
+			continue
+		}
+		if !commiter && strings.HasPrefix(line, "author ") {
+			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "author "))
+			if currentCommit != "" && currentAuthor != "" {
+				seenAuthors[currentCommit] = currentAuthor
+			}
+			continue
+		}
+		if commiter && strings.HasPrefix(line, "committer ") {
+			currentAuthor = strings.TrimSpace(strings.TrimPrefix(line, "committer "))
+			if currentCommit != "" && currentAuthor != "" {
+				seenAuthors[currentCommit] = currentAuthor
+			}
+			continue
+		}
+		if !strings.HasPrefix(line, "\t") || currentAuthor == "" || currentCommit == "" {
+			continue
+		}
+		a := info[currentAuthor]
+		if a == nil {
+			a = &authorInfo{commits: map[string]struct{}{}}
+			info[currentAuthor] = a
+		}
+		a.lines++
+		a.commits[currentCommit] = struct{}{}
 	}
-	if !strings.HasPrefix(s, ".") {
-		s = "." + s
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
-	return strings.ToLower(s)
+	return info, nil
 }
