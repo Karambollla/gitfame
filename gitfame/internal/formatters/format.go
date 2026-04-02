@@ -111,7 +111,7 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 		}
 
 		out := make([]string, 0, len(exts))
-		//lint:ignore SA1011 false positive: elements are transformed, can't just append slice
+		//lint:ignore S1011 false positive: elements are transformed
 		for _, e := range exts {
 			e = strings.TrimSpace(e)
 			if e == "" {
@@ -122,7 +122,6 @@ func LoadLanguageMap(repositoryPath string) (*map[string][]string, error) {
 			}
 			out = append(out, strings.ToLower(e))
 		}
-		// staticcheck:ignore SA1011 // false positive: elements are transformed
 		norm[key] = out
 	}
 
