@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
 	"gitlab.com/slon/shad-go/gitfame/internal/gitfame"
 	"gitlab.com/slon/shad-go/gitfame/internal/models"
+	"gitlab.com/slon/shad-go/gitfame/internal/util"
 )
 
 var (
@@ -35,10 +35,10 @@ var rootCmd = &cobra.Command{
 			OrderBy:      orderBy,
 			UseCommitter: useCommitter,
 			Format:       format,
-			Extensions:   formatters.SplitCSV(extensions),
-			Languages:    formatters.SplitCSV(languages),
-			Exclude:      formatters.SplitCSV(exclude),
-			RestrictTo:   formatters.SplitCSV(restrictTo),
+			Extensions:   util.SplitCSV(extensions),
+			Languages:    util.SplitCSV(languages),
+			Exclude:      util.SplitCSV(exclude),
+			RestrictTo:   util.SplitCSV(restrictTo),
 			ShowProgress: showProgress,
 		}
 		if err := gitfame.Validate(&opts); err != nil {

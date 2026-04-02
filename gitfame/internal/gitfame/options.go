@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
 	"gitlab.com/slon/shad-go/gitfame/internal/git"
 	"gitlab.com/slon/shad-go/gitfame/internal/models"
+	"gitlab.com/slon/shad-go/gitfame/internal/util"
 )
 
 // collects options for gitfame
@@ -37,48 +37,38 @@ func Validate(o *Options) error {
 			return nil
 		}
 		o.LanguageMap = langMap
-
-		extSet := make(map[string]struct{})
-		for _, e := range o.Extensions {
-			ne := normalizeExt(e)
-			if ne != "" {
-				extSet[ne] = struct{}{}
-			}
-		}
-
-		for _, lang := range o.Languages {
-			exts := formatters.ExtensionsForLanguage(lang, o.LanguageMap)
-			if len(exts) == 0 {
-				fmt.Fprintln(os.Stderr, "warning: unknown language:", lang)
-				continue
-			}
-			for _, e := range exts {
-				ne := normalizeExt(e)
-				if ne != "" {
-					extSet[ne] = struct{}{}
-				}
-			}
-		}
-
-		merged := make([]string, 0, len(extSet))
-		for e := range extSet {
-			merged = append(merged, e)
-		}
-		o.Extensions = merged
+		o.Extensions = buildMergedExtensions(o)
 	}
 
 	return nil
 }
 
-func normalizeExt(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+func buildMergedExtensions(o *Options) []string {
+	extSet := make(map[string]struct{})
+	for _, e := range o.Extensions {
+		ne := util.NormalizeExt(e)
+		if ne != "" {
+			extSet[ne] = struct{}{}
+		}
 	}
-	if !strings.HasPrefix(s, ".") {
-		s = "." + s
+	for _, lang := range o.Languages {
+		exts := formatters.ExtensionsForLanguage(lang, o.LanguageMap)
+		if len(exts) == 0 {
+			fmt.Fprintln(os.Stderr, "warning: unknown language:", lang)
+			continue
+		}
+		for _, e := range exts {
+			ne := util.NormalizeExt(e)
+			if ne != "" {
+				extSet[ne] = struct{}{}
+			}
+		}
 	}
-	return strings.ToLower(s)
+	merged := make([]string, 0, len(extSet))
+	for e := range extSet {
+		merged = append(merged, e)
+	}
+	return merged
 }
 
 func Run(o *Options) error {
