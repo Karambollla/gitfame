@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	privateRepoRoot = "/opt/shad"
+	privateRepoRoot = "/opt/private"
 	deadlinesYML    = ".deadlines.yml"
 )
 

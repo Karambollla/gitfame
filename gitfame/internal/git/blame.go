@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gitlab.com/slon/shad-go/gitfame/internal/models"
+	"github.com/Karambollla/gitfame/gitfame/internal/models"
 )
 
 type BlameLine = models.BlameLine

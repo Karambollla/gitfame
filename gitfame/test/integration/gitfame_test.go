@@ -12,10 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"gitlab.com/slon/shad-go/tools/testtool"
+	"github.com/Karambollla/gitfame/tools/testtool"
 )
 
-const importPath = "gitlab.com/slon/shad-go/gitfame/cmd/gitfame"
+const importPath = "github.com/Karambollla/gitfame/gitfame/cmd/gitfame"
 
 var binCache testtool.BinCache
 

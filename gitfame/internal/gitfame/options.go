@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
-	"gitlab.com/slon/shad-go/gitfame/internal/git"
-	"gitlab.com/slon/shad-go/gitfame/internal/models"
-	"gitlab.com/slon/shad-go/gitfame/internal/util"
+	"github.com/Karambollla/gitfame/gitfame/internal/formatters"
+	"github.com/Karambollla/gitfame/gitfame/internal/git"
+	"github.com/Karambollla/gitfame/gitfame/internal/models"
+	"github.com/Karambollla/gitfame/gitfame/internal/util"
 )
 
 // collects options for gitfame
