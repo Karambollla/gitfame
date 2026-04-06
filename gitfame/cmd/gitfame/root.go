@@ -4,10 +4,10 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/Karambollla/gitfame/gitfame/internal/gitfame"
+	"github.com/Karambollla/gitfame/gitfame/internal/models"
+	"github.com/Karambollla/gitfame/gitfame/internal/util"
 	"github.com/spf13/cobra"
-	"gitlab.com/slon/shad-go/gitfame/internal/gitfame"
-	"gitlab.com/slon/shad-go/gitfame/internal/models"
-	"gitlab.com/slon/shad-go/gitfame/internal/util"
 )
 
 var (

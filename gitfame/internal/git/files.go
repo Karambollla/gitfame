@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gitlab.com/slon/shad-go/gitfame/internal/formatters"
-	"gitlab.com/slon/shad-go/gitfame/internal/util"
+	"github.com/Karambollla/gitfame/gitfame/internal/formatters"
+	"github.com/Karambollla/gitfame/gitfame/internal/util"
 )
 
 func fileMatchesFilters(filePath string, extSet map[string]struct{}, exclude []string, restrictTo []string) bool {

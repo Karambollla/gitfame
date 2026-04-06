@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/perf/benchstat"
 
-	"gitlab.com/slon/shad-go/tools/testtool"
+	"github.com/Karambollla/gitfame/tools/testtool"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	privateRepoFlag = "private-repo"
 
 	testdataDir      = "testdata"
-	moduleImportPath = "gitlab.com/slon/shad-go"
+	moduleImportPath = "github.com/Karambollla/gitfame"
 )
 
 var testSubmissionCmd = &cobra.Command{
@@ -60,7 +60,7 @@ func init() {
 	_ = testSubmissionCmd.MarkFlagRequired(problemFlag)
 
 	testSubmissionCmd.Flags().String(studentRepoFlag, ".", "path to student repo root")
-	testSubmissionCmd.Flags().String(privateRepoFlag, ".", "path to shad-go-private repo root")
+	testSubmissionCmd.Flags().String(privateRepoFlag, ".", "path to private repo root")
 }
 
 // mustParseDirFlag parses string directory flag with given name.
