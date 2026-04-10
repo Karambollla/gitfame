@@ -15,6 +15,9 @@ install:
 run: build
 	$(PKG)/$(BINARY) --repository=. --extensions='.go,.md' --order-by=lines
 
+lint:
+	golangci-lint run ./...
+
 test:
 	go test -v ./gitfame/test/integration/... -count=1
 
